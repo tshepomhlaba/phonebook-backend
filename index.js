@@ -1,9 +1,14 @@
 const express = require('express')
 const app = express()
 const morgan = require('morgan')
+const cors = require("cors")
 
+const PORT = process.env.PORT || 3001;
+
+app.use(cors())
 app.use(express.json())
 app.use(morgan("tiny"))
+
 morgan.token("req-body", (req) => {
     if(req.method === "POST") {
         return JSON.stringify(req.body)
@@ -12,6 +17,8 @@ morgan.token("req-body", (req) => {
 })
 
 app.use(morgan(":method :url :status :res[content-length] - :response-time ms :req-body"))
+
+
 let persons = [
     { 
     "id": "1",
@@ -35,16 +42,17 @@ let persons = [
     }
 ]
 
-//Method to display how many contacts are in the phonebook and the current time and date
-app.get('/', (request, response) => {
-    const  date = new Date
-    response.send( `<p>Phonebook has info for ${persons.length} people<br>${date}</p>`)
-})
-
 //Method for display all the contacts in phonebook
 app.get('/api/persons', (request, response) => {
-    response.json(persons)
+    response.json(persons);
 })
+
+//Method to display how many contacts are in the phonebook and the current time and date
+app.get('/info', (request, response) => {
+    const  date = new Date
+    response.send( `<p>Phonebook has info for ${persons.length} people <br>${date}</p>`)
+})
+
 
 //Method to display a single contact in the phonebook
 app.get('/api/persons/:id', (request, response) => {
@@ -101,8 +109,6 @@ app.post('/api/persons', (request, response) => {
     response.status(201).send(persons)   
 })
 
-
-const PORT = 3000
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
