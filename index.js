@@ -1,15 +1,19 @@
 const express = require('express')
 const app = express()
 const morgan = require('morgan')
+require("dotenv").config();
+
 const cors = require("cors")
+const Person = require('./models/person');
 
 const PORT = process.env.PORT || 3001;
 
+app.use(express.static('dist'))
 app.use(cors())
 app.use(express.json())
-app.use(express.static("dist"))
 app.use(morgan("tiny"))
 
+//Function for logging the different requests to the console
 morgan.token("req-body", (req) => {
     if(req.method === "POST") {
         return JSON.stringify(req.body)
@@ -19,96 +23,89 @@ morgan.token("req-body", (req) => {
 
 app.use(morgan(":method :url :status :res[content-length] - :response-time ms :req-body"))
 
-
-let persons = [
-    { 
-    "id": "1",
-    "name": "Arto Hellas", 
-    "number": "040-123456"
-    },
-    { 
-    "id": "2",
-    "name": "Ada Lovelace", 
-    "number": "39-44-5323523"
-    },
-    { 
-    "id": "3",
-    "name": "Dan Abramov", 
-    "number": "12-43-234345"
-    },
-    { 
-    "id": "4",
-    "name": "Mary Poppendieck", 
-    "number": "39-23-6423122"
-    }
-]
-
-//Method for display all the contacts in phonebook
-app.get('/api/persons', (request, response) => {
+//Function to get all persons
+app.get("/api/persons", (request, response, next) => {
+    Person.find({}).then((persons) => {
+    if(persons) {
     response.json(persons);
-})
-
-//Method to display how many contacts are in the phonebook and the current time and date
-app.get('/info', (request, response) => {
-    const  date = new Date
-    response.send( `<p>Phonebook has info for ${persons.length} people <br>${date}</p>`)
-})
-
-
-//Method to display a single contact in the phonebook
-app.get('/api/persons/:id', (request, response) => {
-    const id = request.params.id
-    const person = persons.find(note => note.id === id)
-    if(person) {
-    response.json(person)
-    } else {
-    console.log("x")
-    response.status(404).end()   
+    }else {
+        response.status(404).end()    
     }
+    }).catch((error) => next(error))
 })
 
-//Method to display delete a contact from the phonebook
-app.delete('/api/persons/:id', (request,response) => {
+app.get("/api/persons/:id", (request, response) => {
     const id = request.params.id
-    persons = persons.filter(note => note.id !== id)
-    response.status(204).end()
+    Person.findById(id).then((persons) => {
+        if(persons) {
+        response.json(persons);
+        }else {
+        response.status(404).end()    
+        }
+        }).catch((error) => next(error))
 })
 
+app.get('/info', (request, response) => {
+    const date = new Date
+    Person.find({}).then((persons) => {
+    response.send( `<p>Phonebook has info for ${persons.length} people <br>${date}</p>`)
+    })
+})
 
-//Method to get the Generate a new ID    
-const generateId = () => {
-    const maxId = persons.length > 0
-    ? Math.max(...persons.map(n => Number(n.id)))
-    : 0
-    return String(maxId + 1)
+//Route to add a new person to the database
+app.post('/api/persons', (request, response, next) => {
+    const body = request.body
+
+    if (body.name === undefined) {
+    return response.status(400).json({ error: 'content missing' })
+    }
+
+    const person = new Person({
+    name: body.name,
+    number: body.number,
+    })
+    person.save().then(savedPerson => {
+    response.json(savedPerson)
+    }).catch((error) => next(error))
+})
+
+//Deleting a person from the database
+app.delete('/api/persons/:id', (request, response, next) => {
+    Person.findByIdAndDelete(request.params.id)
+    .then(result => {
+        response.status(204).end()
+    }).catch((error) => next(error))
+})
+
+//Route to update and already existing person with new infromation
+app.put('/api/persons/:id', (request, response, next) => {
+    const {id} = request.params;
+    const {name, number} = request.body;
+
+    Person.findByIdAndUpdate(id, {name, number}, {new: true, runValidators: true, context: 'query'})
+    .then((updatedPerson) => {
+        if(updatedPerson) {
+        response.json(updatedPerson) 
+        } else {
+        response.status(404).end
+        }
+    })
+    .catch((error) => next(error))
+})
+
+//Error handling middleware
+const errorHandler = (error, request, response, next) => {
+    console.error(error.message)
+
+    if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+    } else if (error.name === 'ValidationError') {
+        return response.status(400).json({ error: error.message })
+    }
+        next(error)
 }
 
-//Method to add a new contact to the phonebook
-app.post('/api/persons', (request, response) => {
-    const body = request.body
-    body.id = generateId()
-    if (!body.name) {
-        response.status(400).json({ 
-        error: 'name missing' 
-    })
-    }else if (!body.number) {
-        response.status(400).json({ 
-        error: 'number missing' 
-        })
-    } 
-    const NameExits = persons.find(person => {
-        return person.name === body.name
-    })
-
-    if (NameExits) {
-        response.status(400).json ({
-        error:"name must be unique"
-        })
-    }
-
-    persons = persons.concat(body)
-    response.status(201).send(persons)   
-})
+    app.use(errorHandler)
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
